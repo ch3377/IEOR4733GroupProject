@@ -1,0 +1,127 @@
+---
+title: "3-2. Stepwise Regression for all Stocks"
+author: "Biyao Wang"
+date: "2019/4/16"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(MASS)
+```
+
+Conduct the Stepwise Regression for all stocks and save accuracy of full model and selected model both for Training set and Test set.
+
+```{r}
+fullmodel <- list()
+finalmodel <- list()
+ticker = c('amzn', 'aapl',  'nvda', 'amd', 'msft', 'fb', 'nflx', 'goog', 'intc', 'pypl')
+accuracytrainfull <- rep(0,times=10)
+accuracytrainfinal <- rep(0,times=10)
+accuracytestfull <- rep(0,times=10)
+accuracytestfinal <- rep(0,times=10)
+predtrainfull <- list()
+predtrainfinal <- list()
+predtestfull <- list()
+predtestfinal <- list()
+
+```
+
+
+```{r}
+for (i in 1:10){
+  stock = ticker[i]
+  print(stock)
+  filename = paste(c(stock,'indicator_set2.csv'),collapse = "_")
+  data = read.table(filename, header = TRUE, sep = ",")
+  
+  
+  row = nrow(data)
+  data$direction[1:(row-1)] = data$direction[2:row]
+  
+  data = na.omit(data)
+  end = which(data$time == "2018-12-17 09:30:00")-1 
+  
+  col = ncol(data)
+  row = nrow(data)
+  
+  data = data[,12:col]
+  train = c(1:end)
+  
+  
+  # Fit the full model
+  data$direction <- as.factor(data$direction)
+  full.model <- glm(direction ~., data = data, subset = train , family = binomial(link = 'logit'))
+  fullmodel[i] <- full.model
+  summary(fullmodel[i])
+  # Stepwise regression model
+  final.model <- stepAIC(full.model, direction = "both", 
+                        trace = FALSE)
+  finalmodel[i] <- final.model
+  summary(finalmodel[i])
+  
+  datatest = data[-train,]
+  datatrain = data[train,]
+  
+  predictfull = predict(full.model, datatrain, type = "response")
+  predictfinal = predict(final.model, datatrain, type = "response")
+  
+  predictfull[predictfull>=0.5]=1
+  predictfull[predictfull<0.5]=-1
+  predictfinal[predictfinal>=0.5]=1
+  predictfinal[predictfinal<0.5]=-1
+  
+  accuracytrainfull[i] <-sum(datatrain$direction == predictfull)/ nrow(datatrain)
+  accuracytrainfinal[i] <- sum(datatrain$direction == predictfinal)/ nrow(datatrain)
+  
+  predtrainfull[i] <- predictfull
+  predtrainfinal[i] <- predictfinal
+
+  
+  predictfull = predict(full.model, datatest, type = "response")
+  predictfinal = predict(final.model, datatest, type = "response")
+  
+  predictfull[predictfull>=0.5]=1
+  predictfull[predictfull<0.5]=-1
+  predictfinal[predictfinal>=0.5]=1
+  predictfinal[predictfinal<0.5]=-1
+
+
+
+  accuracytestfull[i] <-sum(datatest$direction == predictfull)/ nrow(datatest)
+  accuracytestfinal[i] <- sum(datatest$direction == predictfinal)/ nrow(datatest)
+  
+  predtestfull[i] <- predictfull
+  predtestfinal[i] <- predictfinal
+  
+}
+
+```
+
+
+## Save the accuracy to csv file.
+```{r}
+
+accuracy <- data.frame(accuracytrainfull,accuracytrainfinal,accuracytestfull,accuracytestfinal)
+accuracy <- data.frame(ticker,accuracy)
+```
+
+```{r}
+accuracy
+temp <- as.matrix(accuracy)[,2:5]
+temp = t(temp)
+aa = data.frame(temp)
+names(aa) = ticker
+aa
+```
+
+
+```{r}
+write.csv(aa,'accuracy.csv',col.names = TRUE, row.names = TRUE)
+```
+
+
+

@@ -1,0 +1,265 @@
+---
+title: "3-1. Feature Selection"
+author: "Biyao Wang"
+date: "2019/4/12"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# Campare to use the categorical or numeric value for MA, VMA, MACD, KD.
+
+Take ¡®aapl¡¯ as example.
+
+## First, just use the numeric value.
+```{r}
+aapl = read.table("aapl_indicator_set1.csv", header = TRUE, sep = ",")
+
+```
+
+```{r}
+row = nrow(aapl)
+aapl$direction[1:(row-1)] = aapl$direction[2:row]
+
+aapl = na.omit(aapl)
+```
+
+```{r}
+end = which(aapl$time == "2018-12-17 09:30:00")-1 
+#start = which(aapl$time == "2018-10-01 09:30:00")
+
+col = ncol(aapl)
+row = nrow(aapl)
+
+data = aapl[,12:col]
+train = c(1:end)
+```
+
+```{r}
+data_train = aapl[1:end,12:col]
+data_train = na.omit(data_train)
+```
+
+
+```{r}
+data_test = aapl[(end+1):row,12:col]
+data_test = na.omit(data_test)
+```
+
+```{r}
+library(MASS)
+# Fit the full model
+data_train$direction <- as.factor(data_train$direction)
+full.model <- glm(direction ~., data = data_train , family = "binomial")
+summary(full.model)
+# Stepwise regression model
+step.model <- stepAIC(full.model, direction = "both", 
+                      trace = FALSE)
+summary(step.model)
+```
+
+The NA part occurs because of multicollinearity, we should transfer the high-related numeric variable into categorical variable. 
+
+## Then, use the categorical value.
+```{r}
+aapl2 = read.table("aapl_indicator_set2.csv", header = TRUE, sep = ",")
+
+```
+
+```{r}
+row = nrow(aapl2)
+aapl2$direction[1:(row-1)] = aapl2$direction[2:row]
+
+aapl2 = na.omit(aapl2)
+```
+
+```{r}
+end = which(aapl2$time == "2018-12-17 09:30:00")-1 
+#start = which(aapl2$time == "2018-10-01 09:30:00")
+
+col = ncol(aapl2)
+row = nrow(aapl2)
+
+data = aapl2[,12:col]
+train = c(1:end)
+```
+
+```{r}
+data_train = aapl2[1:end,12:col]
+data_train = na.omit(data_train)
+```
+
+
+```{r}
+data_test = aapl2[(end+1):row,12:col]
+data_test = na.omit(data_test)
+```
+
+```{r}
+library(MASS)
+# Fit the full model
+data_train$direction <- as.factor(data_train$direction)
+full.model <- glm(direction ~., data = data_train , family = binomial(link = 'logit'))
+summary(full.model)
+# Stepwise regression model
+step.model <- stepAIC(full.model, direction = "both", 
+                      trace = FALSE)
+summary(step.model)
+```
+
+```{r}
+test = data[-train,]
+predictfull = predict(full.model, test, type = "response")
+predictfinal = predict(step.model, test, type = "response")
+predictfull[predictfull>=0.5]=1
+predictfull[predictfull<0.5]=-1
+
+predictfinal[predictfinal>=0.5]=1
+predictfinal[predictfinal<0.5]=-1
+
+
+accfull <-sum(test$direction == predictfull)/ nrow(test)
+accfinal <- sum(test$direction == predictfinal)/ nrow(test)
+```
+
+
+## Finally, use the combination of Numeric value and Categorical value.
+```{r}
+aapl_all = read.table("aapl_indicator_set_all.csv", header = TRUE, sep = ",")
+
+```
+
+```{r}
+row = nrow(aapl_all)
+aapl_all$direction[1:(row-1)] = aapl_all$direction[2:row]
+
+aapl_all = na.omit(aapl_all)
+```
+
+```{r}
+end = which(aapl_all$time == "2018-12-17 09:30:00")-1 
+#start = which(aapl_all$time == "2018-10-01 09:30:00")
+
+col = ncol(aapl_all)
+row = nrow(aapl_all)
+
+data = aapl_all[,12:col]
+train = c(1:end)
+```
+
+
+
+```{r}
+library(MASS)
+# Fit the full model
+data$direction <- as.factor(data$direction)
+full.model <- glm(direction ~., data = data, subset = train, family = "binomial")
+summary(full.model)
+# Stepwise regression model
+step.model <- stepAIC(full.model, direction = "both", 
+                      trace = FALSE)
+summary(step.model)
+```
+
+From the result, we see that use categorical value for MA, VMA, MACD, KD is enough. Thus, in the follow model fitting, we conducted the stepwise regression using such datasets. 
+
+
+# Show the feature Importance by Random Forest.
+Also take AAPL as example.
+
+```{r}
+list = c(1:21,30:33)
+for (i in list)
+{
+  #print (i)
+  #data_train[,i] <- as.factor(data_train[,i])
+  #data_test[,i] <- as.factor(data_test[,i])
+  data[,i] <- as.factor(data[,i])
+}
+  
+```
+
+
+
+```{r}
+library(randomForest)
+ntree_fit<-randomForest(direction ~., data = data_train,mtry=5,ntree=100, importance = TRUE)
+plot(ntree_fit)
+```
+
+
+```{r}
+oob.err=double(21)
+#test.err=double(21)
+
+#mtry is no of Variables randomly chosen at each split
+for(mtry in 1:21) 
+{
+  rf=randomForest(direction ~., data = data_train,mtry=mtry) 
+  oob.err[mtry] = mean(rf$err.rate) #Error of all Trees fitted
+  
+  #pred<-predict(rf,Boston[-train,]) #Predictions on Test Set for each Tree
+  #test.err[mtry]= with(Boston[-train,], mean( (medv - pred)^2)) #Mean Squared Test Error
+  
+  cat(mtry," ") #printing the output to the console
+  
+}
+```
+
+```{r}
+plot(oob.err)
+which.min(oob.err)
+```
+
+```{r}
+ntree_fit<-randomForest(direction ~., data = data_train,mtry=3,ntree=1000, importance = TRUE)
+plot(ntree_fit)
+```
+We can set ntree = 200.
+
+```{r}
+
+#options(CRAN="https://cloud.r-project.org/");
+#install.packages('rlang')
+#install.packages("ggplot2")
+#install.packages("pillar")
+#install.packages("colorspace")
+
+library(ggplot2) #Data visualization
+
+library(randomForest)
+```
+
+
+
+```{r}
+finalrf_aapl<-randomForest(direction ~., data = data, subset = train,mtry=3,ntree=200, importance = TRUE)
+print(finalrf_aapl)
+```
+
+
+```{r}
+
+imp <- importance(finalrf_aapl, type=1)
+featureImportance <- data.frame(Feature=row.names(imp), Importance=imp[,1])
+
+p_aapl <- ggplot(featureImportance, aes(x=reorder(Feature, Importance), y=Importance)) +
+     geom_bar(stat="identity", fill="#53cfff") +
+     coord_flip() + 
+     theme_light(base_size=20) +
+     xlab("") +
+     ylab("Importance") + 
+     ggtitle("Random Forest Feature Importance\n") +
+     theme(plot.title=element_text(size=18))
+
+```
+
+```{r, fig.width=12, fig.height=12}
+p_aapl
+```
+We can see that WilliamR, ADO and RSI are most significant for AAPL.
+
